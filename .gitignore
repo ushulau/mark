@@ -1,0 +1,36 @@
+# Original Go implementation (local reference only, not part of this project)
+mark-research/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+.env/
+
+# Test, coverage, and build artifacts
+.pytest_cache/
+.cache/
+pytest-of-*/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# pip temp dirs accidentally created inside the workspace
+pip-build-tracker-*/
+pip-ephem-wheel-cache-*/
+pip-install-*/
+
+# Editors, IDEs, and OS files
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
