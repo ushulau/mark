@@ -7,7 +7,7 @@ name = "mark"
 version = "0.1.0"
 description = "Python clone of mark — sync Markdown files to Confluence"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 # Stdlib only (urllib, tomllib, argparse): no third-party runtime dependencies.
 dependencies = []
 

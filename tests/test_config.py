@@ -100,6 +100,32 @@ def test_load_config_file_toml_types(tmp_path):
     }
 
 
+def test_load_config_file_fallback_flat_values(tmp_path, monkeypatch):
+    monkeypatch.setattr("mark.config.tomllib", None)  # simulate Python < 3.11
+    cfg = tmp_path / "mark.toml"
+    cfg.write_text(
+        "# comment\nspace = \"DOC\"  # trailing\ntitle-from-h1 = true\n"
+        "mermaid-scale = 2.5\nretries = 3\nparents = [\"a\", \"b\"]\nempty = []\n",
+        encoding="utf-8",
+    )
+    assert load_config_file(cfg) == {
+        "space": "DOC",
+        "title-from-h1": True,
+        "mermaid-scale": 2.5,
+        "retries": 3,
+        "parents": ["a", "b"],
+        "empty": [],
+    }
+
+
+def test_load_config_file_fallback_rejects_tables(tmp_path, monkeypatch):
+    monkeypatch.setattr("mark.config.tomllib", None)  # simulate Python < 3.11
+    cfg = tmp_path / "mark.toml"
+    cfg.write_text('[tool]\nspace = "DOC"\n', encoding="utf-8")
+    with pytest.raises(ConfigError, match="tables are not supported"):
+        load_config_file(cfg)
+
+
 def test_apply_dict_rejects_non_bool():
     with pytest.raises(ConfigError, match="must be true or false"):
         apply_dict(Config(), {"title-from-h1": "yes"}, "test")

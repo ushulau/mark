@@ -7,6 +7,8 @@ images, and labels. No third-party packages are required.
 
 ## Install
 
+Requires Python 3.9+ and nothing else (no third-party dependencies).
+
 ```sh
 pip install -e .
 ```
@@ -20,6 +22,16 @@ python -m mark sync --files "docs/**/*.md" ...
 
 For upstream muscle memory, the `sync` subcommand may be omitted:
 `mark --files "docs/**/*.md" ...` works too.
+
+No pip access? Use the zero-install launcher instead — same arguments,
+no installation, any Python 3.9+ (the project has no dependencies):
+
+```sh
+python mark-cli.py --files "docs/**/*.md" ...
+python mark-cli.py sync --help
+```
+
+Just keep `mark-cli.py` next to the `mark/` directory.
 
 ## Quick start
 
@@ -170,6 +182,10 @@ export MARK_PASSWORD=<api-token>
 Environment booleans accept `1/true/yes/on` and `0/false/no/off`;
 list options (`--files`, `--check-links`, `--features`) take
 comma-separated values. Unknown keys/variables warn and are ignored.
+
+On Python 3.9/3.10 (no `tomllib` in the standard library), config files
+are read by a minimal built-in parser: flat `key = value` pairs only,
+`[tables]` are rejected — the example above works as-is.
 
 ## Parameters
 
@@ -373,6 +389,7 @@ mark sync --files "docs/**/*.md" --space DOC --output-format json \
 ## Layout
 
 - `pyproject.toml` — project metadata, `mark` console script (no dependencies)
+- `mark-cli.py` — zero-install launcher (`python mark-cli.py ...`, no pip needed)
 - `mark/config.py` — TOML config file, `MARK_*` env, CLI merging, password
   resolution, option validation
 - `mark/metadata.py` — HTML headers + YAML front matter parsing, title derivation
@@ -385,6 +402,7 @@ mark sync --files "docs/**/*.md" --space DOC --output-format json \
   parent-chain creation, create/update/skip, `--changes-only` hashes,
   attachments, labels, `--compile-only`/`--dry-run`, `--output-format`
 - `mark-research/` — original Go implementation (reference only, untouched)
+- `tests/` — pytest suite: config, converter, Confluence client, CLI, launcher
 
 ## Scope notes
 
