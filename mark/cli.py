@@ -170,6 +170,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Image alignment: left, center or right (header wins per file). [$MARK_IMAGE_ALIGN]",
     )
     sync.add_argument(
+        "--image-width", default="",
+        help="Max image width in pixels; SVGs larger than this are scaled down "
+        "proportionally, smaller ones are left alone (header wins per file). "
+        "[$MARK_IMAGE_WIDTH]",
+    )
+    sync.add_argument(
+        "--image-height", default="",
+        help="Max image height in pixels; SVGs larger than this are scaled down "
+        "proportionally, smaller ones are left alone (header wins per file). "
+        "[$MARK_IMAGE_HEIGHT]",
+    )
+    sync.add_argument(
         "--content-appearance", default="",
         help="Default content appearance: full-width, fixed or default. "
         "[$MARK_CONTENT_APPEARANCE]",
@@ -401,6 +413,15 @@ def resolve_image_align(config_align: str, meta_align: str) -> str:
     return align
 
 
+def resolve_image_dimension(name: str, config_value: str, meta_value: str) -> str:
+    value = (meta_value or config_value or "").strip()
+    if value and not (value.isdigit() and int(value) > 0):
+        raise MetaError(
+            f"invalid {name} {value!r}, expected a positive number of pixels"
+        )
+    return value
+
+
 _INCLUDE_RE = re.compile(r"<!--\s*Include:\s*(.*?)\s*-->")
 
 
@@ -521,12 +542,43 @@ class SyncResult(str):
         return obj
 
 
+def build_page_title_map(files: list[str], config: Config) -> dict[str, str]:
+    """Map each file's normalized absolute path to its resolved page title.
+
+    Used to turn links between files in the same sync batch into Confluence
+    page links instead of dead relative-filename hrefs. Unreadable or
+    untitled files are silently skipped: it just means links to them fall
+    back to a plain ``<a>``, same as before this map existed.
+    """
+    titles: dict[str, str] = {}
+    for path in files:
+        try:
+            with open(path, encoding="utf-8") as handle:
+                text = handle.read()
+            meta, _body, _warnings = parse_document(
+                text,
+                filename=path,
+                title_from_h1=config.title_from_h1,
+                title_from_filename=config.title_from_filename,
+                space=config.space,
+                parents=config.parents,
+                content_appearance=config.content_appearance,
+                title_append_hash=config.title_append_hash,
+            )
+        except (OSError, MetaError):
+            continue
+        if meta.title:
+            titles[os.path.normpath(os.path.abspath(path))] = meta.title
+    return titles
+
+
 def sync_file(
     path: str,
     config: Config,
     client: ConfluenceClient | None,
     page_id: str = "",
     _path_root: str = "",
+    page_titles: dict[str, str] | None = None,
 ) -> SyncResult:
     """Sync one file; returns the action taken. Raises on failure."""
     with open(path, encoding="utf-8") as handle:
@@ -561,11 +613,21 @@ def sync_file(
                                       "reason": "Synchronized is false"})
 
     image_align = resolve_image_align(config.image_align, meta.image_align)
+    image_width = resolve_image_dimension(
+        "image-width", config.image_width, meta.image_width
+    )
+    image_height = resolve_image_dimension(
+        "image-height", config.image_height, meta.image_height
+    )
     result = render(
         body,
         drop_h1=config.drop_h1,
         strip_linebreaks=config.strip_linebreaks,
         image_align=image_align,
+        image_max_width=image_width,
+        image_max_height=image_height,
+        image_base_dir=source_dir,
+        page_links=page_titles,
         attach_referenced=config.attach_referenced,
     )
     warn_unsupported_headers(path, meta, body)
@@ -800,13 +862,16 @@ def run_sync(args: argparse.Namespace) -> int:
             return 1
 
     path_root = run_root(config.files, config.parents_from_path_root)
+    page_titles = build_page_title_map(files, config)
     results: list[dict] = []
     errors: list[str] = []
     failures = 0
     for file_path in files:
         try:
             assert client is not None or config.compile_only
-            outcome = sync_file(file_path, config, client, page_id, path_root)
+            outcome = sync_file(
+                file_path, config, client, page_id, path_root, page_titles
+            )
             info = dict(outcome.info) if isinstance(outcome, SyncResult) else {}
             info.setdefault("file", file_path)
             info.setdefault("status", str(outcome))

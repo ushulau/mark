@@ -46,6 +46,8 @@ HEADER_ORDER = "Order"
 HEADER_INCLUDE = "Include"
 HEADER_CONTENT_APPEARANCE = "Content-Appearance"
 HEADER_IMAGE_ALIGN = "Image-Align"
+HEADER_IMAGE_WIDTH = "Image-Width"
+HEADER_IMAGE_HEIGHT = "Image-Height"
 HEADER_PROPERTY = "Property"
 HEADER_SYNCHRONIZED = "Synchronized"
 
@@ -55,6 +57,8 @@ KNOWN_HEADERS = (
     HEADER_EMOJI,
     HEADER_FOLDER,
     HEADER_IMAGE_ALIGN,
+    HEADER_IMAGE_WIDTH,
+    HEADER_IMAGE_HEIGHT,
     HEADER_INCLUDE,
     HEADER_LABEL,
     HEADER_LAYOUT,
@@ -98,6 +102,8 @@ class Meta:
     properties: dict[str, Any] = field(default_factory=dict)
     order: int | None = None
     image_align: str = ""
+    image_width: str = ""
+    image_height: str = ""
 
 
 def canonical_header(key: str) -> str | None:
@@ -432,6 +438,10 @@ def _apply_front_matter(meta: Meta, parsed: dict[str, Any], filename: str) -> li
             set_content_appearance(meta, _to_string(value))
         elif norm == "imagealign":
             meta.image_align = _to_string(value).lower()
+        elif norm == "imagewidth":
+            meta.image_width = _to_string(value)
+        elif norm == "imageheight":
+            meta.image_height = _to_string(value)
         elif norm == "order":
             meta.order = _to_int(value)
         elif norm == "synchronized":
@@ -652,6 +662,10 @@ def parse_document(
             set_content_appearance(meta, value)
         elif header == HEADER_IMAGE_ALIGN:
             meta.image_align = value.strip().lower()
+        elif header == HEADER_IMAGE_WIDTH:
+            meta.image_width = value.strip()
+        elif header == HEADER_IMAGE_HEIGHT:
+            meta.image_height = value.strip()
         elif header == HEADER_SYNCHRONIZED:
             lowered = value.strip().lower()
             if lowered in ("true", "yes", "on", "1"):

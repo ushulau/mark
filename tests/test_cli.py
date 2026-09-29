@@ -11,6 +11,7 @@ import pytest
 from mark.cli import (
     SyncResult,
     apply_layout,
+    build_page_title_map,
     build_parser,
     content_hash,
     find_includes,
@@ -305,6 +306,39 @@ def test_sync_file_create_with_parents_attachments_labels(tmp_path):
     assert ("labels", result.info["page_id"], ["l1", "l2"], False) in client.writes
     assert any(w[0] == "attach" for w in client.writes)
     assert result.info["url"].startswith("https://confluence.test/pages/")
+
+
+def test_build_page_title_map(tmp_path):
+    a = write_doc(tmp_path, name="a.md", text="<!-- Space: DOC -->\n<!-- Title: A -->\n\nBody.\n")
+    b = write_doc(tmp_path, name="b.md", text="<!-- Space: DOC -->\n<!-- Title: B -->\n\nBody.\n")
+    titles = build_page_title_map([a, b], Config())
+    assert titles == {
+        os.path.normpath(os.path.abspath(a)): "A",
+        os.path.normpath(os.path.abspath(b)): "B",
+    }
+
+
+def test_build_page_title_map_skips_untitled_and_missing(tmp_path):
+    untitled = write_doc(tmp_path, name="u.md", text="Just a body, no headers.\n")
+    titles = build_page_title_map([untitled, str(tmp_path / "missing.md")], Config())
+    assert titles == {}
+
+
+def test_sync_file_resolves_cross_file_page_link(tmp_path, capsys):
+    write_doc(
+        tmp_path, name="b.md",
+        text="<!-- Space: DOC -->\n<!-- Title: Target Page -->\n\nBody.\n",
+    )
+    a = write_doc(
+        tmp_path, name="a.md",
+        text="<!-- Space: DOC -->\n<!-- Title: A -->\n\nSee [the other page](b.md).\n",
+    )
+    config = Config(compile_only=True)
+    files = [a, str(tmp_path / "b.md")]
+    page_titles = build_page_title_map(files, config)
+    result = sync_file(a, config, None, page_titles=page_titles)
+    out = capsys.readouterr().out
+    assert '<ri:page ri:content-title="Target Page" />' in out
 
 
 def test_sync_file_update_unchanged_and_emoji(tmp_path):
