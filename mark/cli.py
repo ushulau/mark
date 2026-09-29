@@ -170,6 +170,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Image alignment: left, center or right (header wins per file). [$MARK_IMAGE_ALIGN]",
     )
     sync.add_argument(
+        "--image-width", default="",
+        help="Max image width in pixels; SVGs larger than this are scaled down "
+        "proportionally, smaller ones are left alone (header wins per file). "
+        "[$MARK_IMAGE_WIDTH]",
+    )
+    sync.add_argument(
+        "--image-height", default="",
+        help="Max image height in pixels; SVGs larger than this are scaled down "
+        "proportionally, smaller ones are left alone (header wins per file). "
+        "[$MARK_IMAGE_HEIGHT]",
+    )
+    sync.add_argument(
         "--content-appearance", default="",
         help="Default content appearance: full-width, fixed or default. "
         "[$MARK_CONTENT_APPEARANCE]",
@@ -401,6 +413,15 @@ def resolve_image_align(config_align: str, meta_align: str) -> str:
     return align
 
 
+def resolve_image_dimension(name: str, config_value: str, meta_value: str) -> str:
+    value = (meta_value or config_value or "").strip()
+    if value and not (value.isdigit() and int(value) > 0):
+        raise MetaError(
+            f"invalid {name} {value!r}, expected a positive number of pixels"
+        )
+    return value
+
+
 _INCLUDE_RE = re.compile(r"<!--\s*Include:\s*(.*?)\s*-->")
 
 
@@ -561,11 +582,20 @@ def sync_file(
                                       "reason": "Synchronized is false"})
 
     image_align = resolve_image_align(config.image_align, meta.image_align)
+    image_width = resolve_image_dimension(
+        "image-width", config.image_width, meta.image_width
+    )
+    image_height = resolve_image_dimension(
+        "image-height", config.image_height, meta.image_height
+    )
     result = render(
         body,
         drop_h1=config.drop_h1,
         strip_linebreaks=config.strip_linebreaks,
         image_align=image_align,
+        image_max_width=image_width,
+        image_max_height=image_height,
+        image_base_dir=source_dir,
         attach_referenced=config.attach_referenced,
     )
     warn_unsupported_headers(path, meta, body)

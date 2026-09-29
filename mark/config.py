@@ -68,6 +68,8 @@ class Config:
     continue_on_error: bool = False
     insecure_skip_tls_verify: bool = False
     image_align: str = ""
+    image_width: str = ""
+    image_height: str = ""
     content_appearance: str = ""
     append_labels: bool = False
     attach_referenced: bool = False
@@ -277,6 +279,10 @@ _KEY_TO_ATTR = {
     "insecure_skip_tls_verify": "insecure_skip_tls_verify",
     "image-align": "image_align",
     "image_align": "image_align",
+    "image-width": "image_width",
+    "image_width": "image_width",
+    "image-height": "image_height",
+    "image_height": "image_height",
     "content-appearance": "content_appearance",
     "content_appearance": "content_appearance",
     "append-labels": "append_labels",
@@ -494,6 +500,8 @@ def apply_args(config: Config, args: Any) -> None:
         "parents_from_path_root",
         "version_message",
         "image_align",
+        "image_width",
+        "image_height",
         "content_appearance",
         "include_path",
         "log_level",
@@ -605,6 +613,15 @@ def validate_config(config: Config) -> None:
             f"invalid --image-align {config.image_align!r} "
             "(expected: left, center, or right)"
         )
+    for flag, value in (
+        ("--image-width", config.image_width),
+        ("--image-height", config.image_height),
+    ):
+        value = value.strip()
+        if value and not (value.isdigit() and int(value) > 0):
+            raise ConfigError(
+                f"invalid {flag} {value!r} (expected a positive number of pixels)"
+            )
     if config.log_level.strip().lower() not in (
         "trace", "debug", "info", "warning", "error", "fatal",
     ):
