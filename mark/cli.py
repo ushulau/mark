@@ -542,12 +542,43 @@ class SyncResult(str):
         return obj
 
 
+def build_page_title_map(files: list[str], config: Config) -> dict[str, str]:
+    """Map each file's normalized absolute path to its resolved page title.
+
+    Used to turn links between files in the same sync batch into Confluence
+    page links instead of dead relative-filename hrefs. Unreadable or
+    untitled files are silently skipped: it just means links to them fall
+    back to a plain ``<a>``, same as before this map existed.
+    """
+    titles: dict[str, str] = {}
+    for path in files:
+        try:
+            with open(path, encoding="utf-8") as handle:
+                text = handle.read()
+            meta, _body, _warnings = parse_document(
+                text,
+                filename=path,
+                title_from_h1=config.title_from_h1,
+                title_from_filename=config.title_from_filename,
+                space=config.space,
+                parents=config.parents,
+                content_appearance=config.content_appearance,
+                title_append_hash=config.title_append_hash,
+            )
+        except (OSError, MetaError):
+            continue
+        if meta.title:
+            titles[os.path.normpath(os.path.abspath(path))] = meta.title
+    return titles
+
+
 def sync_file(
     path: str,
     config: Config,
     client: ConfluenceClient | None,
     page_id: str = "",
     _path_root: str = "",
+    page_titles: dict[str, str] | None = None,
 ) -> SyncResult:
     """Sync one file; returns the action taken. Raises on failure."""
     with open(path, encoding="utf-8") as handle:
@@ -596,6 +627,7 @@ def sync_file(
         image_max_width=image_width,
         image_max_height=image_height,
         image_base_dir=source_dir,
+        page_links=page_titles,
         attach_referenced=config.attach_referenced,
     )
     warn_unsupported_headers(path, meta, body)
@@ -830,13 +862,16 @@ def run_sync(args: argparse.Namespace) -> int:
             return 1
 
     path_root = run_root(config.files, config.parents_from_path_root)
+    page_titles = build_page_title_map(files, config)
     results: list[dict] = []
     errors: list[str] = []
     failures = 0
     for file_path in files:
         try:
             assert client is not None or config.compile_only
-            outcome = sync_file(file_path, config, client, page_id, path_root)
+            outcome = sync_file(
+                file_path, config, client, page_id, path_root, page_titles
+            )
             info = dict(outcome.info) if isinstance(outcome, SyncResult) else {}
             info.setdefault("file", file_path)
             info.setdefault("status", str(outcome))

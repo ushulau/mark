@@ -424,6 +424,13 @@ mark sync --files "docs/**/*.md" --space DOC --output-format json \
 - There is no watch mode: upstream mark has none either, so there is
   nothing to be par with. Re-run `mark sync` on change (e.g. via
   `watchexec`, `entr`, or a file-watching task) instead.
-- Out of scope for now: `Include` expansion, cross-file page links,
+- Links between files in the same `--files` batch (e.g.
+  `[MDR](02-market-data-reader.md)`) resolve to the target file's `Title`
+  header and become a proper Confluence page link
+  (`<ac:link><ri:page ri:content-title="..." /></ac:link>`), same-space only.
+  A link to a `.md` file outside the batch, or missing a title, falls back
+  to a plain `<a href>` pointing at the literal filename (dead in
+  Confluence) same as before.
+- Out of scope for now: `Include` expansion, cross-space page links,
   mermaid/d2/math rendering, mentions, folders, content properties,
   page moves/ordering, orphan handling, page-manifest tracking.

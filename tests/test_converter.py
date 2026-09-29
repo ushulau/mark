@@ -191,3 +191,45 @@ def test_strip_linebreaks_is_accepted_noop():
 def test_url_encoded_attachment_filename():
     result = render("![](my%20pic.png)\n")
     assert 'ri:filename="my pic.png"' in result.storage
+
+
+def test_page_link_resolved_by_page_links_map():
+    page_links = {"/docs/other.md": "Other Page"}
+    result = render(
+        "[see also](other.md)\n", image_base_dir="/docs", page_links=page_links
+    )
+    assert result.storage == (
+        '<p><ac:link><ri:page ri:content-title="Other Page" />'
+        "<ac:plain-text-link-body><![CDATA[see also]]></ac:plain-text-link-body>"
+        "</ac:link></p>"
+    )
+    assert result.attachments == []
+
+
+def test_page_link_ignores_fragment_and_query():
+    page_links = {"/docs/other.md": "Other Page"}
+    result = render(
+        "[see also](other.md#section?x=1)\n",
+        image_base_dir="/docs",
+        page_links=page_links,
+    )
+    assert 'ri:content-title="Other Page"' in result.storage
+
+
+def test_md_link_outside_batch_falls_back_to_plain_link():
+    result = render(
+        "[see also](missing.md)\n", image_base_dir="/docs", page_links={}
+    )
+    assert result.storage == '<p><a href="missing.md">see also</a></p>'
+
+
+def test_page_link_takes_precedence_over_attach_referenced():
+    page_links = {"/docs/other.md": "Other Page"}
+    result = render(
+        "[see also](other.md)\n",
+        image_base_dir="/docs",
+        page_links=page_links,
+        attach_referenced=True,
+    )
+    assert "ri:page" in result.storage
+    assert result.attachments == []
