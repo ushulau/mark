@@ -10,6 +10,11 @@ Confluence mappings:
 
 * Local images become ``<ac:image><ri:attachment .../></ac:image>`` and are
   reported as attachments to upload (``image_align`` sets ``ac:align``).
+  ``image_max_width``/``image_max_height`` cap an SVG's rendered size:
+  if the SVG's own width/height (or ``viewBox``) exceeds the cap, ``ac:width``/
+  ``ac:height`` are set to a proportionally scaled-down size; images already
+  within the box, or whose size can't be read, are left with no size
+  attributes (natural size, never upscaled or distorted).
 * Fenced code blocks become ``code`` structured macros with the info string
   as language.
 * With ``attach_referenced=True``, links to local files become attachment
@@ -80,15 +85,55 @@ def _attachment_filename(ref: str) -> str:
     return unquote(path).replace("\\", "/").rsplit("/", 1)[-1]
 
 
+_SVG_TAG_RE = re.compile(r"<svg\b[^>]*>", re.IGNORECASE | re.DOTALL)
+_SVG_DIM_RE = re.compile(r'\b(width|height)\s*=\s*"([^"]*)"', re.IGNORECASE)
+_SVG_DIM_VALUE_RE = re.compile(r"^([\d.]+)\s*(?:px)?$", re.IGNORECASE)
+_SVG_VIEWBOX_RE = re.compile(
+    r'viewBox\s*=\s*"\s*[-\d.]+\s+[-\d.]+\s+([\d.]+)\s+([\d.]+)\s*"', re.IGNORECASE
+)
+
+
+def _svg_intrinsic_size(path: str) -> tuple[float, float] | None:
+    """Return an SVG's own (width, height) in px, or None if unavailable.
+
+    Reads explicit ``width``/``height`` attributes (ignoring percentages,
+    which aren't a fixed pixel size) and falls back to ``viewBox``.
+    """
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            text = f.read()
+    except OSError:
+        return None
+    tag_match = _SVG_TAG_RE.search(text)
+    tag = tag_match.group(0) if tag_match else text
+    dims: dict[str, float] = {}
+    for attr, value in _SVG_DIM_RE.findall(tag):
+        value_match = _SVG_DIM_VALUE_RE.match(value.strip())
+        if value_match:
+            dims[attr.lower()] = float(value_match.group(1))
+    if "width" in dims and "height" in dims:
+        return dims["width"], dims["height"]
+    viewbox_match = _SVG_VIEWBOX_RE.search(tag)
+    if viewbox_match:
+        return float(viewbox_match.group(1)), float(viewbox_match.group(2))
+    return None
+
+
 class _InlineRenderer:
     def __init__(
         self,
         *,
         image_align: str = "",
+        image_max_width: str = "",
+        image_max_height: str = "",
+        image_base_dir: str = "",
         attach_referenced: bool = False,
         attachments: list[str] | None = None,
     ) -> None:
         self.image_align = image_align if image_align in _ALIGN_VALUES else ""
+        self.image_max_width = float(image_max_width) if image_max_width else 0.0
+        self.image_max_height = float(image_max_height) if image_max_height else 0.0
+        self.image_base_dir = image_base_dir
         self.attach_referenced = attach_referenced
         self.attachments: list[str] = attachments if attachments is not None else []
         self._spans: list[str] = []
@@ -98,6 +143,33 @@ class _InlineRenderer:
         ref = ref.strip()
         if ref and ref not in self.attachments:
             self.attachments.append(ref)
+
+    def _fitted_size(self, src: str) -> tuple[int, int] | None:
+        """Scale an SVG's intrinsic size down to fit the max box, if needed.
+
+        Preserves aspect ratio and never upscales. Returns None if there is
+        no max box configured, the ref isn't an SVG, or its size can't be
+        determined (callers should render without size attributes then).
+        """
+        if not (self.image_max_width or self.image_max_height):
+            return None
+        if not src.lower().endswith(".svg"):
+            return None
+        path = os.path.normpath(os.path.join(self.image_base_dir, src))
+        size = _svg_intrinsic_size(path)
+        if size is None:
+            return None
+        width, height = size
+        if width <= 0 or height <= 0:
+            return None
+        scale = 1.0
+        if self.image_max_width and width > self.image_max_width:
+            scale = min(scale, self.image_max_width / width)
+        if self.image_max_height and height > self.image_max_height:
+            scale = min(scale, self.image_max_height / height)
+        if scale >= 1.0:
+            return None
+        return round(width * scale), round(height * scale)
 
     # -- protected spans --------------------------------------------------
     # Generated HTML (code spans, images, links) is stashed behind \x00N\x00
@@ -161,9 +233,13 @@ class _InlineRenderer:
                 align = (
                     f' ac:align="{self.image_align}"' if self.image_align else ""
                 )
+                fitted = self._fitted_size(src)
+                width = f' ac:width="{fitted[0]}"' if fitted else ""
+                height = f' ac:height="{fitted[1]}"' if fitted else ""
                 filename = _escape_attr(_attachment_filename(src))
                 out = (
-                    f'<ac:image{align}><ri:attachment filename="{filename}" />'
+                    f'<ac:image{align}{width}{height}>'
+                    f'<ri:attachment ri:filename="{filename}" />'
                 )
                 if alt.strip():
                     out += f"<ac:caption>{_escape_text(alt.strip())}</ac:caption>"
@@ -182,7 +258,7 @@ class _InlineRenderer:
                 filename = _escape_attr(_attachment_filename(href))
                 return self._stash_html(
                     "<ac:link>"
-                    f'<ri:attachment filename="{filename}" />'
+                    f'<ri:attachment ri:filename="{filename}" />'
                     f"<ac:plain-text-link-body>{_cdata(label)}</ac:plain-text-link-body>"
                     "</ac:link>"
                 )
@@ -464,6 +540,9 @@ def render(
     drop_h1: bool = False,
     strip_linebreaks: bool = False,  # accepted for CLI parity; see below
     image_align: str = "",
+    image_max_width: str = "",
+    image_max_height: str = "",
+    image_base_dir: str = "",
     attach_referenced: bool = False,
 ) -> RenderResult:
     """Render Markdown to Confluence storage format.
@@ -476,6 +555,9 @@ def render(
     attachments: list[str] = []
     inline = _InlineRenderer(
         image_align=image_align,
+        image_max_width=image_max_width,
+        image_max_height=image_max_height,
+        image_base_dir=image_base_dir,
         attach_referenced=attach_referenced,
         attachments=attachments,
     )

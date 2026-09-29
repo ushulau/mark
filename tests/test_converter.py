@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
+
 from mark.converter import RenderResult, render
 
 
@@ -87,7 +90,7 @@ def test_links_and_autolinks():
 def test_local_image_becomes_attachment():
     result = render("![alt text](img/pic.png)\n")
     assert result.storage == (
-        '<p><ac:image><ri:attachment filename="pic.png" />'
+        '<p><ac:image><ri:attachment ri:filename="pic.png" />'
         "<ac:caption>alt text</ac:caption></ac:image></p>"
     )
     assert result.attachments == ["img/pic.png"]
@@ -105,9 +108,65 @@ def test_invalid_image_align_ignored():
     assert "<ac:image>" in result.storage
 
 
+def _write_svg(tmp_dir: str, name: str, width: int, height: int) -> None:
+    with open(os.path.join(tmp_dir, name), "w", encoding="utf-8") as f:
+        f.write(
+            f'<svg xmlns="http://www.w3.org/2000/svg" '
+            f'width="{width}" height="{height}"><rect /></svg>'
+        )
+
+
+def test_oversized_svg_is_scaled_down_proportionally():
+    with tempfile.TemporaryDirectory() as tmp:
+        _write_svg(tmp, "big.svg", 1000, 500)
+        result = render(
+            "![](big.svg)\n",
+            image_max_width="400",
+            image_max_height="400",
+            image_base_dir=tmp,
+        )
+        # 1000x500 constrained to 400x400 -> width is the binding dimension.
+        assert '<ac:image ac:width="400" ac:height="200">' in result.storage
+        assert result.attachments == ["big.svg"]
+
+
+def test_undersized_svg_is_left_alone():
+    with tempfile.TemporaryDirectory() as tmp:
+        _write_svg(tmp, "small.svg", 100, 50)
+        result = render(
+            "![](small.svg)\n",
+            image_max_width="400",
+            image_max_height="400",
+            image_base_dir=tmp,
+        )
+        assert result.storage == (
+            "<p><ac:image><ri:attachment ri:filename=\"small.svg\" /></ac:image></p>"
+        )
+
+
+def test_svg_with_only_viewbox_is_scaled():
+    with tempfile.TemporaryDirectory() as tmp:
+        with open(os.path.join(tmp, "vb.svg"), "w", encoding="utf-8") as f:
+            f.write(
+                '<svg xmlns="http://www.w3.org/2000/svg" '
+                'viewBox="0 0 800 400"><rect /></svg>'
+            )
+        result = render("![](vb.svg)\n", image_max_width="400", image_base_dir=tmp)
+        assert '<ac:image ac:width="400" ac:height="200">' in result.storage
+
+
+def test_unreadable_or_non_svg_image_is_left_alone():
+    result = render(
+        "![](missing.svg)\n", image_max_width="400", image_base_dir="/nonexistent"
+    )
+    assert "<ac:image>" in result.storage
+    result2 = render("![](a.png)\n", image_max_width="400", image_base_dir="/tmp")
+    assert "<ac:image>" in result2.storage
+
+
 def test_attach_referenced_links():
     result = render("[spec](docs/spec.pdf)\n", attach_referenced=True)
-    assert '<ri:attachment filename="spec.pdf" />' in result.storage
+    assert '<ri:attachment ri:filename="spec.pdf" />' in result.storage
     assert "<ac:plain-text-link-body><![CDATA[spec]]></ac:plain-text-link-body>" in result.storage
     assert result.attachments == ["docs/spec.pdf"]
 
@@ -131,4 +190,4 @@ def test_strip_linebreaks_is_accepted_noop():
 
 def test_url_encoded_attachment_filename():
     result = render("![](my%20pic.png)\n")
-    assert 'filename="my pic.png"' in result.storage
+    assert 'ri:filename="my pic.png"' in result.storage
