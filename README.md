@@ -82,6 +82,8 @@ matter, see below):
 | `Attachment` | Repeatable local file/glob to upload |
 | `Label` | Repeatable page labels |
 | `Image-Align` | `left`, `center`, `right` (overrides `--image-align`) |
+| `Image-Width` | Max width in pixels for local SVGs (overrides `--image-width`) |
+| `Image-Height` | Max height in pixels for local SVGs (overrides `--image-height`) |
 | `Content-Appearance` | `full-width`, `fixed`, `default` |
 | `Order` | Must be a whole number; recorded but sibling reordering is not applied |
 | `Folder` | Accepted with a warning; folders are unsupported |
@@ -265,6 +267,13 @@ are read by a minimal built-in parser: flat `key = value` pairs only,
 - `--image-align ALIGN` (`MARK_IMAGE_ALIGN`, `image-align`) — default
   image alignment: `left`, `center`, or `right`. A per-file `Image-Align`
   header wins; anything else is an error.
+- `--image-width PX` / `--image-height PX` (`MARK_IMAGE_WIDTH` /
+  `MARK_IMAGE_HEIGHT`, `image-width` / `image-height`) — max width/height in
+  pixels for local SVG images. Acts as a bounding box: an SVG whose own
+  width/height (or `viewBox`) exceeds the cap is scaled down proportionally
+  (never distorted, never upscaled); SVGs already within the box, and
+  non-SVG images, are left at their natural size. A per-file `Image-Width` /
+  `Image-Height` header wins over the flag.
 - `--content-appearance MODE` (`MARK_CONTENT_APPEARANCE`,
   `content-appearance`) — default page width: `full-width`, `fixed`, or
   `default`. Anything else is an error.
